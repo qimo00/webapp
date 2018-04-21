@@ -1,11 +1,17 @@
 
 __author__ = 'qimo'
-
+""" 
+orm 对象关系映射，就是把关系数据库的一行映射为一个对象，也就是一个类对应一个表，
+这样，写代码更简单，不用直接操作SQL语句。
+也就是说，将我们需要的参数通过ORM，与数据库语句进行对接。
+"""
 import asyncio, logging
 import aiomysql
 
+
 def log(sql, args=()):
     logging.info('SQL: %s' % sql)
+
 
 def create_args_string(num):
     'create args\' string by \'?\' '
@@ -14,12 +20,13 @@ def create_args_string(num):
         L.append('?')
     return ','.join(L)
 
-#连接池由__pool存储，缺省情况下将编码设置为UTF8
+
+# 连接池由__pool存储，缺省情况下将编码设置为UTF8
 @asyncio.coroutine
-def creat_pool(loop, **kw):
+def create_pool(loop, **kw):
     logging.info('creat database connection pool...')
     global __pool
-    __pool = yield from aiomysql.creat_pool(
+    __pool = yield from aiomysql.create_pool(
         host = kw.get('host', 'localhost'),
         port = kw.get('port', 3306),
         user = kw['user'],
@@ -31,6 +38,7 @@ def creat_pool(loop, **kw):
         minsize = kw.get('minsize', 1),
         loop = loop
     )
+
 
 # Mysql select语句
 @asyncio.coroutine
@@ -49,6 +57,7 @@ def select(sql, args, size=None):
         logging.info('rows returned: %s' % len(rs))
         return rs
 
+
 @asyncio.coroutine
 def execute(sql, args):
     log(sql)
@@ -63,15 +72,16 @@ def execute(sql, args):
         return affected
 
 
-
 class Field(object):
     def __init__(self, name, column_type, primary_key, default):
         self.name = name
         self.column_type = column_type
         self.primary_key = primary_key
         self.default = default
+
     def __str__(self):
         return '<%s, %s, %s>' % (self.__class__.__name__, self.column_type, self.name)
+
 
 class StringField(Field):
     """
@@ -80,20 +90,40 @@ class StringField(Field):
     def __init__(self, name=None, primary_key=False, default=None, ddl='varchar(100)'):
         super().__init__(name, ddl, primary_key, default)
 
+
+class IntegerField(Field):
+    def __init__(self, name=None, primary_key=False, default=0):
+        super().__init__(self, 'bigint', name, primary_key, default)
+
+
+class BooleanField(Field):
+    def __init__(self, name=None, primary_key=False, default=False):
+        super().__init__(self, 'boolean', name, primary_key, default)
+
+
+class FloatField(Field):
+    def __init__(self, name=None, primary_key=False, default=0.0):
+        super().__init__(self, 'real', name, primary_key, default)
+
+
 class IntegerField(Field):
     def __init__(self, name=None, primary_key=False, default=None):
         super().__init__(name, 'bigint', primary_key, default)
 
 
+class TextField(Field):
+    def __init__(self, name=None, default=None):
+        super().__init__(name, 'text', False, default)
+
 
 class ModelMetaclass(type):
     def __new__(cls, name, bases, attrs):
-        #排除Model类本身
+        # 排除Model类本身
         if name=='Model':
             return type.__new__(cls, name, bases, attrs)
         tableName = attrs.get('__table__', None) or name
         logging.info('found model: %s (table:%s) ' % (name, tableName))
-        #获取所有的Field和主键名
+        # 获取所有的Field和主键名
         mappings = dict()
         fields = []
         primaryKey = None
@@ -155,25 +185,77 @@ class Model(dict, metaclass=ModelMetaclass):
         return value
 
     @classmethod
-    @asyncio.coroutine
-    def find(cls, pk):
+    async def find(cls, pk):
         """
         find object by primary key
         通过主键值找到object
         """
-        rs = yield from select('%s where `%s`=?' % (cls.__select__, cls.__primart_key__), [pk], 1)
+        rs = await select('%s where `%s`=?' % (cls.__select__, cls.__primart_key__), [pk], 1)
         if len(rs)==0:
             return None
         return cls(**rs[0])
 
-    @asyncio.coroutine
-    def save(self):
+    @classmethod
+    async def findAll(cls, where=None, args=None, **kw):
+        """
+        find objects by where clause.
+        这里的语句都是将需要的参数生成sql语句，对应到数据库中
+        """
+        sql = [cls.__select__]
+        if where:
+            sql.append('where')
+            sql.append(where)
+        if args is None:
+            args = []
+        orderBy = kw.get('orderBy', None)
+        if orderBy:
+            sql.append('orderBy')
+            sql.append(orderBy)
+        limit = kw.get('limit', None)
+        if limit:
+            sql.append('limit')
+            if isinstance(limit, int):
+                sql.append('?')
+                args.append(limit)
+            elif isinstance(limit, tuple) and len(limit)==2:
+                sql.append('?')
+                args.extend('?, ?')
+            else:
+                raise ValueError('Invalid limit value: %s' % str(limit))
+        rs = await select(' '.join(sql), args)
+        return [cls(**rs) for r in rs]  #??????
+
+    @classmethod
+    async def findNumber(cls, selectField, where=None, args=None):
+        'find number by select and where'
+        sql = ['select %s _num_ from `%s`' % (selectField, cls.__table__)]
+        if where:
+            sql.append('where')
+            sql.append(where)
+        rs = await select(' '.join(sql), args, 1)
+        if len(rs) == 0:
+            return None
+        return rs[0]['_num_']
+
+    async def save(self):
         args = list(map(self.getValueOrDefault, self.__fields__))
         args.append(self.getValueOrDefault(self.__primary_key__))
-        rows = yield from execute(self.__insert__, args)
+        rows = await execute(self.__insert__, args)
         if rows !=1:
             logging.warn('failed to insert record: affected rows: %s' % rows)
 
+    async def update(self):
+        args = list(map(self.getValue, self.__fields__))
+        args.append(self.getValue(self.__primary_key__))
+        rows = await execute(self.__update__, args)
+        if rows!=1:
+            logging.warn('failed to update by primary key: affected rows: %s' % rows)
+
+    async def remove(self):
+        args = [self.getValue(self.__primary_key__)]
+        rows = await execute(self.__delete__, args)
+        if rows!=1:
+            logging.warn('failed to remove by primary key: affected rows: %s' % rows)
 
 
 
