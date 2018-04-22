@@ -58,15 +58,15 @@ def select(sql, args, size=None):
         return rs
 
 
-@asyncio.coroutine
-def execute(sql, args):
+
+async def execute(sql, args):
     log(sql)
-    with (yield from __pool) as conn:
+    with (await __pool) as conn:
         try:
-            cur = yield from conn.cursor()
-            yield from cur.execute(sql.replace('?', '%s'), args)
+            cur = await conn.cursor()
+            await cur.execute(sql.replace('?', '%s'), args)
             affected = cur.rowcount
-            yield from cur.close()
+            await cur.close()
         except BaseException as e:
             raise
         return affected
@@ -93,22 +93,17 @@ class StringField(Field):
 
 class IntegerField(Field):
     def __init__(self, name=None, primary_key=False, default=0):
-        super().__init__(self, 'bigint', name, primary_key, default)
+        super().__init__(name, 'bigint', primary_key, default)
 
 
 class BooleanField(Field):
-    def __init__(self, name=None, primary_key=False, default=False):
-        super().__init__(self, 'boolean', name, primary_key, default)
+    def __init__(self, name=None, default=False):
+        super().__init__(name, 'boolean', False, default)
 
 
 class FloatField(Field):
     def __init__(self, name=None, primary_key=False, default=0.0):
-        super().__init__(self, 'real', name, primary_key, default)
-
-
-class IntegerField(Field):
-    def __init__(self, name=None, primary_key=False, default=None):
-        super().__init__(name, 'bigint', primary_key, default)
+        super().__init__(name, 'real', primary_key, default)
 
 
 class TextField(Field):
@@ -145,7 +140,7 @@ class ModelMetaclass(type):
         escaped_fields = list(map(lambda f: '`%s`' % f, fields))
         attrs['__mappings__'] = mappings #保存属性和列的映射关系
         attrs['__table__'] = tableName
-        attrs['__primart_key__'] = primaryKey #主键属性名
+        attrs['__primary_key__'] = primaryKey #主键属性名
         attrs['__fields__'] = fields    #出主键外的属性名
         attrs['__select__'] = 'select `%s`, %s from `%s`' % (primaryKey, ','.join(escaped_fields), tableName)
         attrs['__insert__'] = 'insert into `%s` (%s, `%s`) values (%s)' % (tableName, ','.join(escaped_fields), primaryKey, create_args_string(len(escaped_fields)+1))
@@ -175,7 +170,7 @@ class Model(dict, metaclass=ModelMetaclass):
         return getattr(self, key, None)
 
     def getValueOrDefault(self, key):
-        value = getattr(self, key)
+        value = getattr(self, key, None)
         if value is None:
             field = self.__mappings__[key]
             if field.default is not None:
