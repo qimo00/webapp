@@ -5,7 +5,6 @@ import logging, functools
 
 from urllib import parse
 from aiohttp import web
-
 from apis import APIError
 
 def get(path):
@@ -37,9 +36,9 @@ def post(path):
 
 def get_required_kw_args(fn):
     args = []
-    params = inspect.signature(fn)
+    params = inspect.signature(fn).parameters
     for name, param in params.items():
-        if param.kind == inspent.Parameter.KEYWORD_ONLY and param.default == inspect.Parameter.empty:
+        if param.kind == inspect.Parameter.KEYWORD_ONLY and param.default == inspect.Parameter.empty:
             args.append(name)
     return tuple(args)
 
@@ -131,9 +130,9 @@ class RequestHandler(object):
             kw['request'] = request
         #check required kw:
         if self._required_kw_args:
-            fro name in self._required_kw_args:
-            if not name in kw:
-                return web.HTTPBadRequest('MIssing argument: %s' % name)
+            for name in self._required_kw_args:
+                if not name in kw:
+                    return web.HTTPBadRequest('MIssing argument: %s' % name)
         logging.info('call with args : %s' % str(kw))
         try :
             r = await self._func(**kw)

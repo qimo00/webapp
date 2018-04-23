@@ -58,7 +58,6 @@ def select(sql, args, size=None):
         return rs
 
 
-
 async def execute(sql, args):
     log(sql)
     with (await __pool) as conn:
@@ -218,7 +217,7 @@ class Model(dict, metaclass=ModelMetaclass):
             else:
                 raise ValueError('Invalid limit value: %s' % str(limit))
         rs = await select(' '.join(sql), args)
-        return [cls(**rs) for r in rs]  #??????
+        return [cls(**r) for r in rs]  #??????
 
     @classmethod
     async def findNumber(cls, selectField, where=None, args=None):
