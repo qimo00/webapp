@@ -77,7 +77,6 @@ def has_request_arg(fn):
 
 
 
-
 class RequestHandler(object):
     def __init__(self, app, fn):
         self._app = app
