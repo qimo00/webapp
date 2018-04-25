@@ -58,7 +58,7 @@ async def auth_factory(app, handler):
             if user:
                 logging.info('set current user: %s' % user.email)
                 request.__user__ = user
-        if request.path.startwith('/manage/') and  (request.__user__ is None or not request.__user__.admin):
+        if request.path.startswith('/manage/') and  (request.__user__ is None or not request.__user__.admin):
             return web.HTTPFound('/signin')
         return (await handler(request))
     return auth
@@ -132,7 +132,9 @@ def datetime_filter(t):
 
 async def init(loop):
     await orm.create_pool(loop=loop, host='127.0.0.1', port=3306, user='root', password='woshidahao1.', db='awesome')
-    app = web.Application(loop = loop, middlewares=[logger_factory, response_factory])
+    app = web.Application(loop = loop, middlewares=[
+        logger_factory, response_factory, auth_factory
+    ])
     init_jinja2(app, filters=dict(datetime=datetime_filter))
     add_routes(app, 'handlers')
     add_static(app)

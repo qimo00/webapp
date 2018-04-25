@@ -127,7 +127,7 @@ class RequestHandler(object):
                 kw[k] = v
         if self._has_request_arg:
             kw['request'] = request
-        #check required kw:
+        # check required kw:
         if self._required_kw_args:
             for name in self._required_kw_args:
                 if not name in kw:

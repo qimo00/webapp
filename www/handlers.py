@@ -5,9 +5,10 @@ url hanlders
 
 import re, time, json, logging, hashlib, base64, asyncio
 from aiohttp import web
+import markdown2
 from coreweb import get, post
 from models import User, Comment, Blog, next_id
-from apis import APIValueError, APIResourceNotFoundError, APIError, APIPermissionError
+from apis import Page, APIValueError, APIResourceNotFoundError, APIError, APIPermissionError
 from config import configs
 
 COOKIE_NAME = 'awesession'
@@ -149,6 +150,15 @@ def signout(request):
     logging.info('user signed out.')
     return r
 
+
+@get('/manage/blogs')
+async def managa_blogs(*, page='1'):
+    return {
+        '__template__': 'manage_blogs.html',
+        'page_index': get_page_index(page)
+    }
+
+
 @get('/manage/blogs/create')
 def manage_create_blog():
     return {
@@ -157,15 +167,16 @@ def manage_create_blog():
         'action': '/api/blogs'
     }
 
+
 _RE_EMAIL = re.compile(r'^[a-z0-9\.\-\_]+\@[a-z0-9\-\_]+(\.[a-z0-9\-\_]+){1,4}$')
 _RE_SHA1 = re.compile(r'^[0-9a-f]{40}$')
-#
-# @get('/api/users')
-# async def api_get_users():
-#     users = await User.findAll(orderBy='created_at desc')
-#     for u in users:
-#         u.passwd = '******'
-#     return dict(users=users)
+
+@get('/api/users')
+async def api_get_users():
+    users = await User.findAll(orderBy='created_at desc')
+    for u in users:
+        u.passwd = '******'
+    return dict(users=users)
 
 
 @post('/api/users')
@@ -192,9 +203,6 @@ async def api_register_user(*, email, name, passwd):
     return r
 
 
-
-
-
 @get('/api/blogs/{id}')
 async def api_get_blog(*, id):
     blog = await Blog.find(id)
@@ -213,6 +221,17 @@ async def api_create_blog(request, *, name, summary, content):
     blog = Blog(user_id=request.__user__.id, user_name=request.__user__.name, user_image=request.__user__.image, name=name.strip(), summary=summary.strip(), content=content.strip())
     await blog.save()
     return blog
+
+
+@get('/api/blogs')
+async def api_blogs(*, page='1'):
+    page_index = get_page_index(page)
+    num = await Blog.findNumber('count(id)')
+    p = Page(num, page_index)
+    if num == 0:
+        return dict(page=p, blogs=())
+    blogs = await Blog.findAll(orderBy='created_at desc', limit=(p.offset, p.limit))
+    return dict(page=p, blogs=blogs)
 
 
 

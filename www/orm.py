@@ -57,15 +57,21 @@ async def select(sql, args, size=None):
         return rs
 
 
-async def execute(sql, args):
+async def execute(sql, args, autocommit = True):
     log(sql)
     with (await __pool) as conn:
+        if not autocommit:
+            await conn.begin()
         try:
             cur = await conn.cursor()
             await cur.execute(sql.replace('?', '%s'), args)
             affected = cur.rowcount
             await cur.close()
+            if not autocommit:
+                await conn.commit()
         except BaseException as e:
+            if not autocommit:
+                await conn.rollback()
             raise
         return affected
 
@@ -183,7 +189,7 @@ class Model(dict, metaclass=ModelMetaclass):
         find object by primary key
         通过主键值找到object
         """
-        rs = await select('%s where `%s`=?' % (cls.__select__, cls.__primart_key__), [pk], 1)
+        rs = await select('%s where `%s`=?' % (cls.__select__, cls.__primary_key__), [pk], 1)
         if len(rs)==0:
             return None
         return cls(**rs[0])
@@ -205,14 +211,14 @@ class Model(dict, metaclass=ModelMetaclass):
             sql.append('order by')
             sql.append(orderBy)
         limit = kw.get('limit', None)
-        if limit:
+        if limit is not None:
             sql.append('limit')
             if isinstance(limit, int):
                 sql.append('?')
                 args.append(limit)
             elif isinstance(limit, tuple) and len(limit)==2:
-                sql.append('?')
-                args.extend('?, ?')
+                sql.append('?,?')
+                args.extend(limit)
             else:
                 raise ValueError('Invalid limit value: %s' % str(limit))
         rs = await select(' '.join(sql), args)
